@@ -9,7 +9,7 @@ getMaster = require('./config/master')
 master = new getMaster.F1_Master()
 res = new help.Helpfix()
 tokenList = {}
-knex = require('knex')({client: 'mysql', connection: { host: 'localhost', user: 'root', port: '3307', password: '', database: process.env.DB_DATABASE}})
+knex = require('knex')({client: 'mysql', connection: { host:'localhost', user: 'root', port: 3306, password: '', database: 'erpfix'}})
 require('knex-paginate').attachPaginate()
 
 require('./f2/cr').app(app)

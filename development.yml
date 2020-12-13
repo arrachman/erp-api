@@ -1,0 +1,9 @@
+apps:
+  - script   : ./server.js
+    name     : 'server'
+    instances: 2
+    exec_mode: cluster
+  - script   : ./15021-finance.js
+    name     : '15021-finance'
+    instances: 2
+    exec_mode: cluster
