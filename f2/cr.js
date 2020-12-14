@@ -92,9 +92,35 @@ const insert = async(req) => {
     }
     if(dataErr.length > 0) return res.fail(dataErr, 406, '', __line, __filename);
 
-    userid     = req.body.main.userid;
-    isUpdate   = req.body.main.isUpdate;
-    res.target = req.body.main.target;
+    userid     = req.body.userid;
+    isUpdate   = req.body.isUpdate;
+    res.target = req.body.target;
+
+    // "*** Start Transaction ***"  
+    var t = knex.transaction();
+
+    //  CEK HAK AKSES STATUS ============================
+    vAkses = 0; msgAkses = "";
+    //  MODUL DAN MENU HARUS DISESUAIKAN
+    vModuleId = 2; vMenuId = 3;
+    switch(req.body.main.crstatus)
+    {
+        case 0: vAkses = 0; break;
+        case 1: vAkses = 0; break;
+        case 2: vAkses = 8; break;
+        case 3: vAkses = 0; break;
+        case 4: vAkses = 0; break;
+        case 5: vAkses = 0; break;
+        case 6: vAkses = 0; break;
+        case 7: vAkses = 0; break;
+        case 8: vAkses = 4; break;
+        case 9: vAkses = 5; break;
+        case 10: vAkses = 6; break;
+        case 11: vAkses = 7; break;
+        case 12: vAkses = 0; break;
+    }
+
+    cekAkses = help.hakAkses(vModuleId, vMenuId, vAkses, userid);
 
     return res.success();
 }
