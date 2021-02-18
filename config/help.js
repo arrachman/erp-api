@@ -384,7 +384,7 @@ function validator(value, data)
 
                 // if interger or numeric check count
                 for(const paramMax in arrValidator) 
-                    if((arrValidator[paramMax] == 'integer' || arrValidator[paramMax] == 'numeric') && maxValue < Number.isInteger(val)) {
+                    if((arrValidator[paramMax] == 'integer' || arrValidator[paramMax] == 'numeric') && maxValue < parseInt(val)) {
                         checkIsNaN = false;
                         msg.push("The " + key + " may not be greater than " + maxValue + ".");
                         break;
@@ -402,9 +402,9 @@ function validator(value, data)
 
                 // if interger or numeric check count
                 for(const paramMin in arrValidator) 
-                    if((arrValidator[paramMin] == 'integer' || arrValidator[paramMin] == 'numeric') && minValue >= parseInt(val)) {
+                    if((arrValidator[paramMin] == 'integer' || arrValidator[paramMin] == 'numeric') && minValue > parseInt(val)) {
                         checkIsNaN = false;
-                        msg.push("The " + key + " must be at least " + minValue + ".");
+                        msg.push("The " + key + " must be at least " + minValue + "." );
                         break;
                     }
                 
