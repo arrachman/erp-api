@@ -15,6 +15,20 @@ Object.defineProperty(global, '__line', {
         return __stack[1].getLineNumber();
     }
 });
+Object.size = function(obj) {
+    var size = 0,
+      key;
+    for (key in obj) {
+      if (obj.hasOwnProperty(key)) size++;
+    }
+    return size;
+  };
+
+q = async(query, trans) => 
+{
+    let run = await trans ? trans.raw(query) : knex.raw(query);
+    return run[0];
+}
 
 const tc = async(tryFunc, req, result, line, filename, param) => {
     let respond
@@ -65,7 +79,203 @@ function strToArray(data)
     return data.split(' ').join('').split(',');
 }
 
-function isEmpty(data)
+M2_Accounting_PeriodeCheck = async(tglAwal = '', tglAkhir = '') =>
+{
+    let respond = {"success": 0, "errmessage":""};
+    filter = "";
+        
+    //  CEK TIPE DATA =============================================
+    cekTipeData = isDate(tglAwal, 'tglAwal');
+    if (!cekTipeData.success) 
+    {
+        respond.errmessage = cekTipeData.info; return respond;
+    }
+    // else
+        // tglAwal = AsFormatTanggal(tglAwal);
+
+    cekTipeData = isDate(tglAkhir, 'tglAkhir');
+    if (!cekTipeData.success) 
+    {
+        respond.errmessage = cekTipeData.info; return respond;
+    }
+//         Else
+//             tglAkhir = AsFormatTanggal(tglAkhir)
+//         End If
+    //  END OF CEK TIPE DATA ======================================
+
+    //  BUAT FILTER ===============================================
+    awal = get_date(tglAwal);
+    akhir = get_date(tglAkhir);
+    //  jika tahun berbeda
+    if (awal.year != akhir.year) 
+    {
+        filter = "((aptahun = '" + awal.year + "' AND apbulan >= '" + awal.month + "') or (aptahun > '" + awal.year + "' AND aptahun < '" + akhir.year + "') or (aptahun = '" + akhir.year + "' AND apbulan <= '" + akhir.month + "'))";
+        //  jika tahun sama
+    }        
+    else if (awal.year == akhir.year) 
+    {
+        //  jika bulan sama
+        if (awal.month == akhir.month) 
+            filter = "((aptahun = '" + awal.year + "') AND (apbulan = '" + awal.month + "'))";
+        //  jika bulan beda
+        else
+            filter = "((aptahun = '" + awal.year + "') AND (apbulan BETWEEN '" + awal.month + "' AND '" + akhir.month + "'))";
+    }
+    //  END OF BUAT FILTER ========================================
+
+
+    // 'CEK PERIODE AKUNTANSI SUDAH TUTUP/BELUM
+    dt = await knex.raw("SELECT aptahun, apbulan FROM f2_accounting_period WHERE " + filter + " AND aptutupperiode = '1'");
+    if (dt[0].length > 0) 
+    {
+        respond.success = 0; 
+        respond.errmessage = "Accounting Periode : Year = '" + dt[0][0] + "', Month = '" + dt[0][1] + "' has closed." ; 
+        return respond;
+    }
+    respond.success = 1;
+    return respond;
+}
+
+insertHistory = async(t, table, primaryKey, primaryKeyDetail, notransaksi, idtransaksi) =>
+{
+    await t.raw(`INSERT INTO ${table}_history(SELECT 0, fix.* FROM ${table} fix WHERE fix.${primaryKey} = ${idtransaksi})`);
+    await t.raw(`INSERT INTO ${table}_detail_history (SELECT 0, ` + 1234 + `, fix.* FROM ${$table}_detail fix WHERE fix.${primaryKeyDetail} = ${idtransaksi} )`);
+}
+
+M0_Notransaksi = async(t, cabang, lokasi, kodetabel, tgl, sumber = "", smodule = 0, matauang = "") =>
+{
+    respond = {}
+    respond.success = false
+    respond.notransaksi = ""; mukodenotransaksi = "";
+    awalan = ""; withLokasi = "1";
+    respond.sqlambil = ""; respond.sql = "";
+    respond.success = 0; jmldigit = 0; noberikutnya = 0;
+    respond.errmessage = ""; rsSetting = "";
+    sgrup = (smodule == 0) ? "accounting" : "options";
+
+    //  AMBIL SETTING, PAKAI CABANG ATAU TIDAK
+    rsSetting = await F_getSetting(smodule, sgrup, sumber + "NoTransactionCabang");
+    withCabang = (notEmpty(rsSetting)) ? rsSetting : 1;
+    if (withCabang != 1) cabang = "--";
+
+    // 'AMBIL SETTING, PAKAI LOKASI ATAU TIDAK
+    rsSetting = await F_getSetting(smodule, sgrup, sumber + "NoTransactionLokasi");
+    withLokasi = (notEmpty(rsSetting)) ? rsSetting : 1;
+    if (withLokasi != 1) lokasi = "--";
+
+    // 'AMBIL SETTING, PAKAI SUMBER ATAU TIDAK
+    rsSetting = await F_getSetting(smodule, sgrup, sumber + "NoTransactionSumber");
+    withSumber = (notEmpty(rsSetting)) ? rsSetting : 1;
+
+    // 'AMBIL SETTING, PAKAI TAHUN ATAU TIDAK
+    rsSetting = await F_getSetting(smodule, sgrup, sumber + "NoTransactionTahun");
+    withTahun = (notEmpty(rsSetting)) ? rsSetting : 1;
+
+    // 'AMBIL SETTING, PAKAI BULAN ATAU TIDAK
+    rsSetting = await F_getSetting(smodule, sgrup, sumber + "NoTransactionBulan");
+    withBulan = (notEmpty(rsSetting)) ? rsSetting : 1;
+
+    // 'AMBIL SETTING, RESET PERBULAN ATAU PERTAHUN
+    rsSetting = await F_getSetting(smodule, sgrup, sumber + "NoTransactionPeriode");
+    resetBulan = (notEmpty(rsSetting)) ? rsSetting : 1;
+
+    // 'SET TAHUN, BULAN
+    get_tgl = get_date(tgl);
+    thn = get_tgl.year;
+    bln = get_tgl.month;
+
+    blnFilter = bln;
+    if (resetBulan != 1) blnFilter = "1";
+
+    if (withLokasi == 1)
+    {
+        // 'AMBIL KODE TRANSAKSI LOKASI
+        sqlambil = "SELECT lkodetransaksi FROM f1_location WHERE lkode = '" + lokasi + "'";
+        dt = await knex_select(sqlambil);
+        if (notEmpty(dt))
+            lokasi = dt[0].lkodetransaksi;
+        else
+        {
+            respond.errmessage = "Could not find Transaction Code for '" + lokasi + "' location."; return respond
+        }
+    }
+
+    // 'AMBIL KODE NO TRANSAKSI MATAUANG
+    respond.sqlambil = "SELECT c.ckodenotransaksi FROM f1_currency c WHERE c.ckode = '" + matauang + "'";
+    dt = await knex_select(respond.sqlambil);
+    if (notEmpty(dt))
+            mukodenotransaksi = dt[0].ckodenotransaksi;
+            
+    // 'AMBIL AWALAN, JMLDIGIT, NOBERIKUTNYA BERDASARKAN KODETABEL, CABANG, LOKASI, TAHUN, BULAN
+    respond.sqlambil = "SELECT n.awalan, n.jmldigit, nb.noberikutnya FROM f0_nomor n JOIN f0_nomor_next nb ON n.kodetabel=SUBSTR(nb.kodetabel FROM 1 FOR length(nb.kodetabel) - length('" + mukodenotransaksi + "')) WHERE n.kodetabel='" + kodetabel + "' AND nb.kodetabel='" + kodetabel + mukodenotransaksi + "' AND nb.cabang='" + cabang + "' AND nb.lokasi='" + lokasi + "' AND nb.tahun='" + thn + "' AND nb.bulan='" + blnFilter + "'";
+    dt = await knex_select(respond.sqlambil);
+    if (notEmpty(dt))
+    {
+        awalan = dt[0].awalan + mukodenotransaksi;
+        jmldigit = dt[0].jmldigit;
+        noberikutnya = dt[0].noberikutnya + 1;
+
+        // 'SET respond.sql
+        respond.sql = "UPDATE f0_nomor_next SET noberikutnya = '" + noberikutnya + "' WHERE cabang='" + cabang + "' AND lokasi='" + lokasi + "' AND kodetabel='" + kodetabel + mukodenotransaksi + "' AND tahun='" + thn + "' AND bulan='" + blnFilter + "'";
+    }
+    else
+    {
+        // 'AMBIL AWALAN, JMLDIGIT BERDASARKAN KODETABEL
+        sqlambil = "SELECT awalan, jmldigit FROM f0_nomor WHERE kodetabel='" + kodetabel + "'";
+        dt = await knex_select(sqlambil);
+        if (notEmpty(dt))
+        {
+            awalan = dt[0].awalan + mukodenotransaksi;
+            jmldigit = dt[0].jmldigit;
+            noberikutnya = 1;
+
+            // 'SET respond.sql
+            respond.sql = "Insert into f0_nomor_next (cabang, lokasi, kodetabel, tahun, bulan, noberikutnya) values('" + cabang + "', '" + lokasi + "', '" + kodetabel + mukodenotransaksi + "', " + thn + ", " + blnFilter + ", '2')";
+        }
+        else
+        {
+            respond.errmessage = "Could not find '" + kodetabel + "' in f0_nomor."; return respond
+        }
+    }
+
+    // 'SET respond.notransaksi
+    // 'coba Kawata
+    if (awalan == "SQ" || awalan == "RI")
+    {
+        respond.notransaksi = (withCabang == 1) ? cabang : "";
+        respond.notransaksi += (withLokasi == 1) ? lokasi : "";
+        respond.notransaksi += (withTahun == 1) ? thn : "";
+    }
+    else
+    {
+        respond.notransaksi = (withCabang == 1) ? cabang : "";
+        respond.notransaksi += (withLokasi == 1) ? lokasi : "";
+        respond.notransaksi += (withSumber == 1) ? awalan : "";
+        respond.notransaksi += (withTahun == 1) ? thn : "";
+    }
+
+    // 'SET BULAN respond.notransaksi
+    if (withBulan == 1)
+        if (notEmpty(bln))
+            respond.notransaksi += bln;
+        else
+            respond.notransaksi += "0" + bln;
+
+    // 'SET DIGIT respond.notransaksi
+    digit = noberikutnya;
+    for(i = digit.length + 1; i < digit.length ; jmldigit)
+    {
+        digit = "0" + digit;
+    }
+
+    respond.notransaksi += digit;
+
+    respond.success = 1;
+
+    return respond;
+}
+
+isEmpty = data =>
 {
     if(!data)
         return true;
@@ -94,40 +304,35 @@ function isEmpty(data)
     }
 }
 
-function notEmpty(data)
+notEmpty = (data) =>
 {
     return !isEmpty(data);
 }
 
-function notEmpty(data)
+FixQuotes = (text ='') =>
 {
-    return !isEmpty(data);
+    return text.toString().replace("'", "''");
 }
 
-function FixQuotes(text ='')
+FixDouble = (text = '') =>
 {
-    return text.replace("'", "''");
+    return text.toString().replace(",", "."); //Replace koma menjadi titik
 }
 
-function FixDouble(text = '')
-{
-    return text.replace(",", "."); //Replace koma menjadi titik
-}
-
-function isContain(data = '', cek = '')
+isContain = (data = '', cek = '') =>
 {
     return data.includes(cek);
 }
 
-function isDate(param = '', nama = 'param')
+isDate = (param = '', nama = 'param') =>
 {
     const val = validator({[nama]: [param]}, {[nama]: 'required|date'});
 
-    res = {};
-    res.success = val.success;
-    res.info = val.message;
+    respond = {};
+    respond.success = val.success;
+    respond.info = val.message;
 
-    return res;
+    return respond;
 }
 
 function dateNow()
@@ -143,12 +348,11 @@ function validator(value, data)
         const arrValidator = data[key].split('|');
         for(const param in arrValidator) {
             const caseValidator = arrValidator[param];
-            const val = (value && value[key]) ? value[key] : '';
+            const val = (value && (value[key] || value[key] == 0)) ? value[key] : '';
 
             // required
-            if(caseValidator == 'required' && !val && isEmpty(val))
+            if(caseValidator == 'required' && !val && isEmpty(val) && val != 0)
                 msg.push("The " + key + " is required.");
-            // console.log(msg)
 
             // numeric, 1 4.5 6.8
             if(caseValidator == 'numeric' && isNaN(val))
@@ -180,7 +384,7 @@ function validator(value, data)
 
                 // if interger or numeric check count
                 for(const paramMax in arrValidator) 
-                    if((arrValidator[paramMax] == 'integer' || arrValidator[paramMax] == 'numeric') && maxValue < val) {
+                    if((arrValidator[paramMax] == 'integer' || arrValidator[paramMax] == 'numeric') && maxValue < Number.isInteger(val)) {
                         checkIsNaN = false;
                         msg.push("The " + key + " may not be greater than " + maxValue + ".");
                         break;
@@ -198,7 +402,7 @@ function validator(value, data)
 
                 // if interger or numeric check count
                 for(const paramMin in arrValidator) 
-                    if((arrValidator[paramMin] == 'integer' || arrValidator[paramMin] == 'numeric') && minValue > val) {
+                    if((arrValidator[paramMin] == 'integer' || arrValidator[paramMin] == 'numeric') && minValue >= parseInt(val)) {
                         checkIsNaN = false;
                         msg.push("The " + key + " must be at least " + minValue + ".");
                         break;
@@ -227,15 +431,17 @@ function get_date(date = '')
         day : date[2]};
 }
 
-function checkContains(columns, data)
+checkContains = (columns, data) =>
 {
+    let bol = false
     columns = columns.replace(' ', '');
     arr = columns.split(',');
     arr.forEach(function(val){
-        if(val == data)
-            return true;
-    });
-    return false;
+        if(val == data) {
+            bol = true
+            return bol
+    }});
+    return bol
 }
 
 //  DataTable - Mengambil/mencari suatu nilai pada field tertentu. AsFilterDataTableX.AsDataTableDLookup
@@ -247,15 +453,16 @@ function AsDataTableDLookup(dt = '', StrField = '', StrFilter = '', NilaiJikaEOF
         //  Proses dg filter
         for(const dc in dt)
         {
-            for(const col in dc)
+            for(const col in dt[dc])
             {
-                const val = dc[col];
+                const val = dt[dc][col];
+
                 for(const arr in StrFilter)
                 {
-                    if(notEmpty(arr) && arr.length == 2)
-                        if((col == arr[0]) && (val == arr[1]))
+                    if(notEmpty(StrFilter[arr]) && StrFilter[arr].length == 2)
+                        if((col == StrFilter[arr][0]) && (val == StrFilter[arr][1]))
                         {
-                            return dc[StrField];
+                            return dt[dc][StrField];
                         }
                 }
             }
@@ -267,7 +474,7 @@ function AsDataTableDLookup(dt = '', StrField = '', StrFilter = '', NilaiJikaEOF
         if(notEmpty(dt))
             if(typeof dt == 'object')
             {
-                if(!empty(dt[StrField]))
+                if(notEmpty(dt[StrField]))
                     return dt[StrField];
             }
             else
@@ -277,7 +484,7 @@ function AsDataTableDLookup(dt = '', StrField = '', StrFilter = '', NilaiJikaEOF
     return NilaiJikaEOF;
 }
 
-function ValidasiMatauangCOA(DtMain, MainCurrencyField = '', MainArrayField = '', DtDetail, DetailArrayField = '', PemisahArray = "~", MainArrayFieldMessage = "",  DetailArrayFieldMessage = "", DetailUrutanField = "urutan")
+ValidasiMatauangCOA = async(DtMain, MainCurrencyField = '', MainArrayField = '', DtDetail, DetailArrayField = '', PemisahArray = "~", MainArrayFieldMessage = "",  DetailArrayFieldMessage = "", DetailUrutanField = "urutan") =>
 {
     ErrMessage = ""; DtCoa = {}; DtValidasi = {};
     Filter = ""; Sql = ""; CurrField = ""; CurrFieldMessage = ""; Norek = "";
@@ -293,7 +500,7 @@ function ValidasiMatauangCOA(DtMain, MainCurrencyField = '', MainArrayField = ''
         vMainMessage = vMain;
 
     //  'VALIDASI JML FIELD UTAMA DAN FIELD MESSAGE UTAMA
-    if (vMain.length != (vMainMessage))
+    if (vMain.length != vMainMessage.length)
         return "Invalid MainArrayFieldMessage.";
     //  'END OF SET FIELD UTAMA ============================================
 
@@ -312,7 +519,7 @@ function ValidasiMatauangCOA(DtMain, MainCurrencyField = '', MainArrayField = ''
     //  'END OF SET FIELD DETAIL ===========================================
 
     //  'AMBIL MATAUANG FUNGSIONAL =========================================
-    dtMatauang = select("SELECT skode, snilai FROM f0_setting WHERE smodule = 0 AND sgrup = 'accounting' AND (skode = 'MataUangFungsional' OR skode = 'Kurs')");
+    let dtMatauang = await knex_select("SELECT skode, snilai FROM f0_setting WHERE smodule = 0 AND sgrup = 'accounting' AND (skode = 'MataUangFungsional' OR skode = 'Kurs')");
     uangFungsional = AsDataTableDLookup(dtMatauang, "snilai", [['skode', 'MataUangFungsional']], "Not found");
     if (uangFungsional == "Not found")
         return "Setting Functional Currency not found.";
@@ -347,7 +554,7 @@ function ValidasiMatauangCOA(DtMain, MainCurrencyField = '', MainArrayField = ''
                 Sql = "SELECT cnomor, cnama, cmatauang FROM f1_coa ";
                 Sql += " WHERE cmatauang <> '" + uangFungsional + "' AND cmatauang <> '" + uangUtama + "' ";
                 Sql += " AND (" + Filter + ") ";
-                DtCoa = select(Sql);
+                DtCoa = await knex_select(Sql);
 
                 // 'JIKA TERDAPAT DATA, MAKA TAMPILKAN ALERT
                 if (notEmpty(DtCoa))
@@ -373,7 +580,7 @@ function ValidasiMatauangCOA(DtMain, MainCurrencyField = '', MainArrayField = ''
             for(const i in vDetail)
             {
                 // 'SET FIELD DAN FIELD MESSAGE
-                CurrField = val; CurrFieldMessage = vDetailMessage[i];
+                CurrField = vDetail[i]; CurrFieldMessage = vDetailMessage[i];
 
                 // 'PERULANGAN SEBANYAK ROW DATA DETAIL
                 for(const dr in DtDetail)
@@ -391,7 +598,7 @@ function ValidasiMatauangCOA(DtMain, MainCurrencyField = '', MainArrayField = ''
                 Sql = "SELECT cnomor, cnama, cmatauang FROM f1_coa ";
                 Sql += " WHERE cmatauang <> '" + uangFungsional + "' AND cmatauang <> '" + uangUtama + "' ";
                 Sql += " AND (" + Filter + ") ";
-                DtCoa = select(Sql);
+                DtCoa = await knex_select(Sql);
 
                 // 'JIKA TERDAPAT DATA, MAKA TAMPILKAN ALERT
                 if (notEmpty(DtCoa))
@@ -422,11 +629,11 @@ function ValidasiMatauangCOA(DtMain, MainCurrencyField = '', MainArrayField = ''
     return ErrMessage;
 }
 
-function M0_DeleteNotransaksi(cabang, lokasi, kodetabel, tgl, notransaksi, sumber = "", smodule = 0, matauang = "")
+M0_DeleteNotransaksi = async(cabang, lokasi, kodetabel, tgl, notransaksi, sumber = "", smodule = 0, matauang = "") =>
 {
-    res = {};
-    res.success = false;
-    res.errmessage = "";
+    let respond = {};
+    respond.success = false;
+    respond.errmessage = "";
     mukodenotransaksi = "";
     awalan = ""; withLokasi = "1";
     sqlambil = ""; sql = "";
@@ -452,18 +659,18 @@ function M0_DeleteNotransaksi(cabang, lokasi, kodetabel, tgl, notransaksi, sumbe
     {
         // 'AMBIL KODE TRANSAKSI LOKASI
         sqlambil = "SELECT lkodetransaksi FROM f1_location WHERE lkode = '" + lokasi + "'";
-        dt = select(sqlambil);
+        dt = await knex_select(sqlambil);
         if (notEmpty(dt))
             lokasi = dt[0].lkodetransaksi;
         else
         {
-            res.errmessage = "Could not find Transaction Code for '" + lokasi + "' location."; return res;
+            respond.errmessage = "Could not find Transaction Code for '" + lokasi + "' location."; return respond;
         }
     }
 
     // 'AMBIL KODE NO TRANSAKSI MATAUANG
     sqlambil = "SELECT c.ckodenotransaksi FROM f1_currency c WHERE c.ckode = '" + matauang + "'";
-    dt = select(sqlambil);
+    dt = await knex_select(sqlambil);
     if (notEmpty(dt))
         mukodenotransaksi = dt[0].ckodenotransaksi;
 
@@ -474,7 +681,7 @@ function M0_DeleteNotransaksi(cabang, lokasi, kodetabel, tgl, notransaksi, sumbe
         tgl = getdate.year + '-01-' + getdate.day;
     }
 
-    // 'AMBIL NOMORBERIKUTNYA DARI F0_NOMOR_NEXT BERDASARKAN :
+    // 'AMBIL NOMORBERIKUTNYA DARI f0_nomor_next BERDASARKAN :
     // 'KODETABEL, LOKASI, TAHUN DAN BULAN TRANSAKSI
     sqlambil = "  SELECT noberikutnya FROM f0_nomor_next";
     sqlambil += " WHERE kodetabel = '" + kodetabel + mukodenotransaksi + "'";
@@ -482,18 +689,18 @@ function M0_DeleteNotransaksi(cabang, lokasi, kodetabel, tgl, notransaksi, sumbe
     sqlambil += " AND cabang = '" + cabang + "'";
     sqlambil += " AND tahun = RIGHT(YEAR('" + tgl + "'), 2)";
     sqlambil += " AND bulan = MONTH('" + tgl + "')";
-    dt = select(sqlambil);
+    dt = await knex_select(sqlambil);
     if (notEmpty(dt))
         noberikutnya = parseInt(dt[0].noberikutnya);
 
     // 'AMBIL JMLDIGIT DARI F0_NOMOR BERDASARKAN KODETABEL
     sqlambil = " SELECT jmldigit FROM f0_nomor";
     sqlambil += " WHERE kodetabel = '" + kodetabel + "'";
-    dt = select(sqlambil);
+    dt = await knex_select(sqlambil);
     if (notEmpty(dt))
         jmldigit = parseInt(dt[0].jmldigit);
 
-    // 'JIKA URUTAN NO.TRANSAKSI = NOMORBERIKUTNYA - 1 MAKA UPDATE F0_NOMOR_NEXT
+    // 'JIKA URUTAN NO.TRANSAKSI = NOMORBERIKUTNYA - 1 MAKA UPDATE f0_nomor_next
     // if ( strlen(notransaksi)-jmldigit == strlen(noberikutnya) - 1)
     // {
         sql = "  UPDATE f0_nomor_next SET noberikutnya = noberikutnya - 1";
@@ -504,18 +711,18 @@ function M0_DeleteNotransaksi(cabang, lokasi, kodetabel, tgl, notransaksi, sumbe
         sql += " AND bulan = MONTH('" + tgl + "')";
     // }
 
-    res.success = true;
-    res.errmessage = errmessage;
-    res.notransaksi = notransaksi;
-    res.sql = sql;
-    return res;
+    respond.success = true;
+    respond.errmessage = errmessage;
+    respond.notransaksi = notransaksi;
+    respond.sql = sql;
+    return respond;
 }
 
 // FUNGSI UNTUK VALIDASI AKUN WAJIB COSTCENTER ATAU TIDAK
-function ValidasiCoaRequiredCostCenter(strFilter = '', dtdetail = '')
+ValidasiCoaRequiredCostCenter = async(strFilter = '', dtdetail = '') =>
 {
     // 'CEK COA WAJIB COST CENTER ==============================
-    dtCekCC = select("SELECT cnomor, cnama FROM f1_coa WHERE ccostcenter = 1 AND (" + strFilter + ")");
+    dtCekCC = await knex_select("SELECT cnomor, cnama FROM f1_coa WHERE ccostcenter = 1 AND (" + strFilter + ")");
     if (notEmpty(dtCekCC))
         for(const dr1 in dtCekCC)
         {
@@ -531,21 +738,21 @@ function ValidasiCoaRequiredCostCenter(strFilter = '', dtdetail = '')
 
 
 //  DataTable - Menghitung jml nilai (sum) pada suatu datatable
-function AsDataTableDSum(dt, StrField)
+AsDataTableDSum = (dt, StrField) =>
 {
-    sum = 0;
+    let sum = 0;
     for(const val in dt)
-        if(!empty(val[StrField]))
-            sum += val[StrField]; 
+        if(notEmpty(dt[val][StrField]))
+            sum += dt[val][StrField]; 
 
     return sum;
 }
 
 // 'FUNGSI UNTUK AMBIL SETTING
-function F_getSetting(sModule, sGrup, sKode)
+F_getSetting = async(sModule, sGrup, sKode) =>
 {
     sql = "SELECT snilai FROM f0_setting WHERE smodule = '" + sModule + "' AND sgrup = '" + sGrup + "' AND skode = '" + sKode + "'";
-    dtSetting = select(sql);
+    dtSetting = await knex_select(sql);
     if(notEmpty(dtSetting))
         if (notEmpty(dtSetting[0].snilai))
             return dtSetting[0].snilai;
@@ -553,10 +760,10 @@ function F_getSetting(sModule, sGrup, sKode)
     return '';
 }
 
-function insertHistory(table, primaryKey, primaryKeyDetail, notransaksi, idtransaksi)
+insertHistory = async(t, table, primaryKey, primaryKeyDetail, notransaksi, idtransaksi) =>
 {
-    insert("INSERT INTO {table}_history(SELECT 0, fix.* FROM {table} fix WHERE fix.{primaryKey} = idtransaksi)");
-    insert("INSERT INTO {table}_detail_history (SELECT 0, '" + getPdo().lastInsertId() + "', fix.* FROM {table}_detail fix WHERE fix.{primaryKeyDetail} = idtransaksi )");
+    await t.raw(`INSERT INTO ${table}_history(SELECT 0, fix.* FROM ${table} fix WHERE fix.${primaryKey} = ${idtransaksi})`);
+    await t.raw(`INSERT INTO ${table}_detail_history (SELECT 0, 123, fix.* FROM ${table}_detail fix WHERE fix.${primaryKeyDetail} = ${idtransaksi} )`);
 }
 
 function validatorGet(data)
@@ -619,6 +826,11 @@ function caseOperator(operator, column, value)
     }
 }
 
+knex_select = async query => {
+    let respond = await knex.raw(query)
+    return respond[0]
+}
+
 function replaceAll(string, search, replace) 
 {
     return string.split(search).join(replace);
@@ -643,18 +855,18 @@ class Global_help
         return response;
     }
     
-    hakAkses(ModuleId = 2, MenuId = 1, IndeksAkses = 0, UserId = 1)
+    hakAkses = async(ModuleId = 2, MenuId = 1, IndeksAkses = 0, UserId = 1) =>
     {    
-        arrNamaAkses = ["Insert", "Update/Draft", "Delete", "GetData", "Approved1", "Approved2", "Approved3", "Approved4", "Approved", "Close/Unclose", "Journal", "History", "Setting Grid"];
+        let arrNamaAkses = ["Insert", "Update/Draft", "Delete", "GetData", "Approved1", "Approved2", "Approved3", "Approved4", "Approved", "Close/Unclose", "Journal", "History", "Setting Grid"];
     
         //CEK HAK AKSES =======================================
-        sql = "SELECT ur.userid, ur.role, rm.rmmoduleid, rm.rmmenuid, rm.rmrole, rm.rmakses, rm.rmfavourite FROM f0_user_role ur JOIN f0_role_menu rm ON ur.role = rm.rmrole WHERE ur.userid = '" + FixDouble(UserId) + "' AND rm.rmmoduleid = '" + FixDouble(ModuleId) + "' AND rmmenuid = '" + FixDouble(MenuId) + "'";
-        dt =  select(sql);
-        
-        if(count(dt) > 0)
+        let sql = "SELECT ur.userid, ur.role, rm.rmmoduleid, rm.rmmenuid, rm.rmrole, rm.rmakses, rm.rmfavourite FROM f0_user_role ur JOIN f0_role_menu rm ON ur.role = rm.rmrole WHERE ur.userid = '" + FixDouble(UserId) + "' AND rm.rmmoduleid = '" + FixDouble(ModuleId) + "' AND rmmenuid = '" + FixDouble(MenuId) + "'";
+        let dt = await knex.raw(sql);
+        if(dt.length > 0)
         {
+            dt = dt[0]
             // JIKA AKSES <> 1 MAKA ALERT TIDAK MEMPUNYAI HAK AKSES
-            if(substr(dt[0].rmakses, IndeksAkses-1, IndeksAkses) == '0')
+            if(dt[0].rmakses.toString().substr(IndeksAkses-1, IndeksAkses) == '0')
                 return "This role doesn't have permission to '" + arrNamaAkses[IndeksAkses] + "' this menu.";
         }
         else
@@ -664,14 +876,15 @@ class Global_help
 
         return '';
     }
-
     
-    M2_Accounting_PeriodeCheck(tglAwal = '', tglAkhir = '')
+    F2_Accounting_PeriodeCheck = async(tglAwal = '', tglAkhir = '') =>
     {
-        success = 0; errmessage = ""; filter = "";
+        let success = 0; 
+        let errmessage = ""; 
+        let filter = "";
           
         //  CEK TIPE DATA =============================================
-        cekTipeData = isDate(tglAwal, 'tglAwal');
+        let cekTipeData = isDate(tglAwal, 'tglAwal');
         if (!cekTipeData.success) 
         {
             errmessage = cekTipeData.info;return errmessage;
@@ -690,15 +903,15 @@ class Global_help
         //  END OF CEK TIPE DATA ======================================
 
         //  BUAT FILTER ===============================================
-        awal = get_date(tglAwal);
-        akhir = get_date(tglAkhir);
+        let awal = get_date(tglAwal);
+        let akhir = get_date(tglAkhir);
         //  jika tahun berbeda
         if (awal.year != akhir.year) 
         {
             filter = "((aptahun = '" + awal.year + "' AND apbulan >= '" + awal.month + "') or (aptahun > '" + awal.year + "' AND aptahun < '" + akhir.year + "') or (aptahun = '" + akhir.year + "' AND apbulan <= '" + akhir.month + "'))";
             //  jika tahun sama
         }        
-        elseif (awal.year == akhir.year) 
+        else if (awal.year == akhir.year) 
         {
             //  jika bulan sama
             if (awal.month == akhir.month) 
@@ -711,8 +924,8 @@ class Global_help
 
 
         // 'CEK PERIODE AKUNTANSI SUDAH TUTUP/BELUM
-        dt = select("SELECT aptahun, apbulan FROM f2_accounting_period WHERE " + filter + " AND aptutupperiode = '1'");
-        if (count(dt) > 0) 
+        let dt = await knex.raw("SELECT aptahun, apbulan FROM f2_accounting_period WHERE " + filter + " AND aptutupperiode = '1'");
+        if (dt.length > 0) 
         {
             success = 0; 
             errmessage = "Accounting Periode : Year = '" + dt[0][0] + "', Month = '" + dt[0][1] + "' has closed." ; 
@@ -720,10 +933,14 @@ class Global_help
         }
 
         success = 1;
-        selesai:
         return json_decode('{"success":"'+ success +'", "errmessage":"' + errmessage + '"}');
     }
 }
+
+const capitalizeFirstLetter = string => {
+    return string.charAt(0).toUpperCase() + string.slice(1);
+}
+  
 
 class ModelsDB
 {
@@ -925,10 +1142,10 @@ class Helpfix
 
         this.done = () => 
         {
-            let res; 
+            let respond; 
             if(this.status)
             {
-                res = {
+                respond = {
                     'success'    : true,
                     'data'      : this.data,
                     'target'    : this.target,
@@ -937,7 +1154,7 @@ class Helpfix
             else
             {
                 this.detail = this.detail == "" ? {} : {detail: this.detail};
-                res = {
+                respond = {
                     'success'    : this.status,
                     'data'      : this.data,
                     'target'    : this.target,
@@ -952,11 +1169,12 @@ class Helpfix
                 };
             }
     
-            return {send:res, status:this.code};
+            return {send:respond, status:this.code};
         }
 
-        this.fail = (message = null, code = null, messageDev = null, line = null, filename = null) => 
+        this.fail = (message = null, code = null, messageDev = null, line = null, filename = null, t = null) => 
         {
+            t && t.rollback()
             this.msguser = message ? message : this.msguser;
             if(this.msguser == "JsonWebTokenError: invalid signature") {
                 this.msguser = "Your credential is wrong"
@@ -980,5 +1198,6 @@ class Helpfix
 module.exports = { Helpfix, ModelsDB, Global_help,
     formatDate, strToArray, isEmpty, notEmpty, FixQuotes, FixDouble, isContain, isDate, validator, get_date, checkContains, 
     AsDataTableDLookup, ValidasiMatauangCOA, M0_DeleteNotransaksi, ValidasiCoaRequiredCostCenter, AsDataTableDSum, F_getSetting,
-    insertHistory, validatorGet, validatorGet, setGroupBy, setOrderBy, caseOperator, tc, replaceAll
+    insertHistory, validatorGet, validatorGet, setGroupBy, setOrderBy, caseOperator, tc, replaceAll, knex_select, M0_Notransaksi,
+    q, M2_Accounting_PeriodeCheck
 };
