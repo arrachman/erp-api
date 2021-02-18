@@ -404,7 +404,7 @@ function validator(value, data)
                 for(const paramMin in arrValidator) 
                     if((arrValidator[paramMin] == 'integer' || arrValidator[paramMin] == 'numeric') && minValue > parseInt(val)) {
                         checkIsNaN = false;
-                        msg.push("The " + key + " must be at least " + minValue + "." );
+                        msg.push("The " + key + " must be at least " + minValue + ".");
                         break;
                     }
                 
