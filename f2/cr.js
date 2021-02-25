@@ -1,5 +1,6 @@
 // TRANSACTION INSERT
 const insert = async(req) => {
+    console.log('req.body.main', req.body.main)
     // Validator var main
     const result = help.validator(req.body, {
         "userid"    : "required|numeric|min:0|max:255",
@@ -648,6 +649,13 @@ const getDataById = async(req) =>
 
 module.exports = {
     app: app => {
+        app.use(function(req, res, next) {
+            res.header("Access-Control-Allow-Origin", "*");
+            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
+            res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+            next();
+          });
+        
         app.post('/f2/cr/insert', async(req, result) => {
             let respond
             try {
