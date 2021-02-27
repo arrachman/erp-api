@@ -108,7 +108,6 @@ class F1_Master
 
         this.insert = async(req, varParam) => {
             varParam && this.setParam(varParam)
-            console.log(req.body)
             const result = help.validator(req.body, this.validatorPost);
             if(!result.success) return res.fail(result.message, 406, result.messageDev, __line, __filename);
 
