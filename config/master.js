@@ -46,14 +46,17 @@ class F1_Master
                 var filter2 = '';
 
                 if(param.column == 'All') {
-                    for(const key in this.header) {
-                        filter += filter == '' ? '' : ' OR ';
-                        filter += help.caseOperator(param.operator,header[key][0], param.filterSearch);
+                    let _filter = ''
+                    for(const key in header) {
+                        _filter += _filter == '' ? '' : ' OR ';
+                        _filter += caseOperator(param.operator,header[key][0], param.filterSearch);
                     }
+                    if(_filter != "" && filter != "")
+                        filter = filter + ' AND (' + _filter + ')';
                 }
                 else
                 {
-                    filter  += help.caseOperator(param.operator, param.column, param.filterSearch);
+                    filter  += caseOperator(param.operator, param.column, param.filterSearch);
                 }
 
                 filter = (filter2 != '' && filter != '') ? '(' + filter + ') AND (' + filter2 + ')' : filter;
@@ -62,8 +65,10 @@ class F1_Master
             let db = new help.ModelsDB(table);
             db.select           = select;
             db.selectFormatDate = selectDate;
-            const data = await db.getData(param.filter, param.groupBy, param.orderBy, param.pageLimit, param.pageNumber);
-        
+            const data = await db.getData(filter, param.groupBy, param.orderBy, param.pageLimit, param.pageNumber);
+            if(data.data.length == 0)
+                return res.fail('Data not found', 406, '', __line, __filename);
+
             res.data = {};
             res.data.title = title;
             res.data.header = header;

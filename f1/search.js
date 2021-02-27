@@ -58,9 +58,7 @@ const search = async(req) => {
             break;
     }
 
-    res.data = await master.showSearch(req, table, select, selectDate, title, header); 
-
-    return res.success();
+    return await master.showSearch(req, table, select, selectDate, title, header);
 }
 
 
