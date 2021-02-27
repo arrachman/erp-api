@@ -815,7 +815,7 @@ function setOrderBy(db, orderBy)
     return db;
 }
 
-function caseOperator(operator, column, value)
+caseOperator = (operator, column, value) =>
 {
     switch(operator)
     {
