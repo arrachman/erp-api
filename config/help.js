@@ -351,7 +351,8 @@ function validator(value, data)
             const val = (value && (value[key] || value[key] == 0)) ? value[key] : '';
 
             // required
-            if(caseValidator == 'required' && !val && isEmpty(val) && val != 0)
+            // if(caseValidator == 'required' && !val && isEmpty(val) && val != 0)
+            if(caseValidator == 'required' && !val && isEmpty(val))
                 msg.push("The " + key + " is required.");
 
             // numeric, 1 4.5 6.8
@@ -366,7 +367,7 @@ function validator(value, data)
             if(caseValidator == 'date') {
                 const moment = require('moment');
                 if(!moment(val, [moment.ISO_8601,"MM/DD/YYYY","MM/DD/YYYY HH:mm:ss","YYYY-MM-DD H:mm:ss"], true).isValid())
-                    msg.push(val + "The " + key + " is not a valid date.");
+                    msg.push("The " + key + " is not a valid date.");
             }
 
             // digits_between, digits_between:2,5 digits_between:10,20

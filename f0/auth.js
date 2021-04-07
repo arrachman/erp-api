@@ -8,10 +8,56 @@ const login = async(req) => {
     res.target = param.target; 
     let refreshToken = Math.floor(Date.now() / 1000) +parseInt(process.env.REFRESH_AUTH)
     let resetToken = Math.floor(Date.now() / 1000) + parseInt(process.env.RESET_AUTH) 
+    
+    const result = help.validator(req.body, {
+        "user"    : "required",
+        "pass"  : "required"
+    });
 
-    const checkLogin = (process.env.USER == req.body.user && process.env.PASS == req.body.pass)
+    if(!result.success) return res.fail(result.message, 406, result.messageDev, __line, __filename);
+
+    let t = await knex.transaction();
+    dt = await t.raw("SELECT * FROM f0_user WHERE ukode ='" + req.body.user + "' AND upassword = '" + req.body.pass + "'");
+    arrUser = []; 
+    // arrSetting = [];
+
+    if (notEmpty(dt[0])) 
+    {
+        vuserid = dt[0][0].userid; 
+        for (const i in dt[0]) {
+                arr = dt[0][i]
+                detail = {}
+                for (const col in arr) {
+                    val = arr[col]
+                    // SET DATA DETAIL USER
+                    detail[col] = val;
+                }
+        
+                arrUser.push(detail);
+            }
+
+            // dt = await t.raw("SELECT * FROM f0_setting "); 
+            // for (const
+            //     arr = dt[0][i]
+            //     detail = {}
+            //     for (const col in arr) {
+            //         val = arr[col]
+            //         // SET DATA DETAIL SETTING
+            //         detail[col] = val;
+            //     }
+        
+            //     arrSetting.push(detail);
+            // }
+    }
+    else
+    {
+        return res.fail("Invalid username or password", 406, '', __line, __filename, t);
+    }
+
+    const checkLogin = vuserid != 0
+    var token = "";
     if (checkLogin) {
-        var token = jwt.sign({ id: 123, role: 'admin', iat:  resetToken }, process.env.SECRET, { expiresIn: refreshToken});
+        token = jwt.sign({ id: vuserid, role: 'admin', iat:  resetToken }, process.env.SECRET, { expiresIn: refreshToken});
         if (token) {
             const response = {
                 "status": "Logged in",
@@ -21,10 +67,13 @@ const login = async(req) => {
             tokenList[token] = response
             res.data = {
                         message: "Success Sign In",
-                        token: token
+                        token: token,
+                        arrUser
+                        // ,arrSetting
                     };
-        }else
-         return res.fail('Failed create token', 401);
+        }else{
+            return res.fail('Failed create token', 401);
+        }
     } else {
         return res.fail('Failed Sign In', 401);
     }
@@ -39,6 +88,18 @@ const login = async(req) => {
     // let db = new help.ModelsDB('tableName');
     // db.select = 'utoken';
     // res.data = db.getDataById('ukode', req.body.username);
+
+    // 'INSERT USER LOGIN ====================================================================
+    sql = "DELETE FROM f0_userlogin WHERE uluser = '" + vuserid + "';";
+    await t.raw(sql);
+    
+    VALUES = "'" + token + "', '" + vuserid + "', '" + "ip client" + "', '" + 1 + "', NOW()";
+    sql = "INSERT INTO f0_userlogin (ultoken, uluser, ulcomputerip, ulaktif, ultgl) VALUES("+ VALUES +");";
+    await t.raw(sql);
+    // 'END OF INSERT USER LOGIN =============================================================
+    
+    t.commit();
+
     return res.success()
 }
 
