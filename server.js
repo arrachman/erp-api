@@ -39,6 +39,8 @@ require('./f1/subdivision').app(app)
 require('./f1/unit').app(app)
 require('./f1/warehouse').app(app)
 
+require('./f1/search').app(app)
+
 app.use(function(req, res, next) {
   res.header("Access-Control-Allow-Origin", "*");
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
@@ -46,18 +48,18 @@ app.use(function(req, res, next) {
   next();
 });
 
-app.get('/f1/search/:id', async(req, result) => {
-  let respond = {}
-  try {
-      respond = 'await tryFunc(req, param)'
-  }
-  catch (err) {
-      respond = res.fail(err.stack.split('\n')[0], 409, err.stack.split('\n'), line, filename)
-  }
-  result.status(202).send('202');
-});
+// app.get('/f1/search/:id', async(req, result) => {
+//   let respond = {}
+//   try {
+//       respond = 'await tryFunc(req, param)'
+//   }
+//   catch (err) {
+//       respond = res.fail(err.stack.split('\n')[0], 409, err.stack.split('\n'), line, filename)
+//   }
+//   result.status(202).send('202');
+// });
 
-app.get('/', function (req, result) {result.sendFile(path.join(path.join(__dirname, ''), 'abc.html'))})
+// app.get('/', function (req, result) {result.sendFile(path.join(path.join(__dirname, ''), 'abc.html'))})
 
 require('reload')(app).then(function () {
   require('http').createServer(app).listen(app.get('port'), function () {
