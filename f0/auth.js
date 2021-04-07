@@ -50,14 +50,18 @@ const login = async (req) => {
         //CEK DATA ROLE MENU
         if (notEmpty(dt[0])) {
             vLevelBefore = 0
-            // console.log(dt[0][0].mnlevel, dt[0][0].mnlevel == 0)
+            //GENERATE TREE MENU
             for (const i in dt[0]) {
+                //AMBIL LEVEL MENU
                 vLevelCurrent = dt[0][i].mnlevel
+                //JIKA LEVEL 0
                 if (vLevelCurrent == 0) {
+                    //JIKA LEVEL SEBELUMNYA = 1 MAKA PUSH ARR MENU LEVEL 1
                     if (vLevelBefore == 1) {
                         vModule["mnmenu1"] = arrMenu1
                         arrModule.push(vModule);
                     }
+                    //JIKA LEVEL SEBELUMNYA = 2 MAKA PUSH ARR MENU LEVEL 2 DAN 1
                     else if (vLevelBefore == 2) {
                         vMn1["mnmenu2"] = arrMenu2
                         arrMenu1.push(vMn1);
@@ -65,28 +69,36 @@ const login = async (req) => {
                         vModule["mnmenu1"] = arrMenu1
                         arrModule.push(vModule);
                     }
+                    //PERULANGAN BUAT ARR MODULE / MENU LEVEL 0
                     arrM = dt[0][i]
                     vModule = {}
                     for (const colM in arrM) {
                         valM = arrM[colM]
                         vModule[colM] = valM;
                     }
+                    //RESET ARR MENU LEVEL 1
                     arrMenu1 = []
                 }
+                //JIKA LEVEL 1
                 else if (vLevelCurrent == 1) {
+                    //JIKA LEVEL SEBELUMNYA < LEVEL MAKA PUSH ARR MENU LEVEL 2
                     if (vLevelCurrent < vLevelBefore) {
                         vMn1["mnmenu2"] = arrMenu2
                         arrMenu1.push(vMn1);
                     }
+                    //PERULANGAN BUAT ARR LEVEL 1
                     arrMn1 = dt[0][i]
                     vMn1 = {}
                     for (const colMn1 in arrMn1) {
                         valMn1 = arrMn1[colMn1]
                         vMn1[colMn1] = valMn1;
                     }
+                    //RESET ARR MENU LEVEL 1
                     arrMenu2 = []
                 }
+                //JIKA LEVEL 2
                 else if (vLevelCurrent == 2) {
+                    //PERULANGAN BUAT ARR LEVEL 2
                     arrMn2 = dt[0][i]
                     vMn2 = {}
                     for (const colMn2 in arrMn2) {
@@ -95,12 +107,15 @@ const login = async (req) => {
                     }
                     arrMenu2.push(vMn2);
                 }
+                //SET LEVEL SEBELUMNYA
                 vLevelBefore = vLevelCurrent
             }
 
+            //PUSH ARR MENU LEVEL 2
             vMn1["mnmenu2"] = arrMenu2
             arrMenu1.push(vMn1);
 
+            //PUSH ARR MENU LEVEL 1
             vModule["mnmenu1"] = arrMenu1
             arrModule.push(vModule);
 
